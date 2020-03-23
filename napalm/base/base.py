@@ -904,7 +904,7 @@ class NetworkDriver(object):
         Returns all configured IP addresses on all interfaces as a dictionary of dictionaries.
         Keys of the main dictionary represent the name of the interface.
         Values of the main dictionary represent are dictionaries that may consist of two keys
-        'ipv4' and 'ipv6' (one, both or none) which are themselvs dictionaries witht the IP
+        'ipv4' and 'ipv6' (one, both or none) which are themselves dictionaries with the IP
         addresses as keys.
         Each IP Address dictionary has the following keys:
 
@@ -1003,7 +1003,7 @@ class NetworkDriver(object):
         """
         raise NotImplementedError
 
-    def get_route_to(self, destination="", protocol=""):
+    def get_route_to(self, destination="", protocol="", longer=False):
 
         """
         Returns a dictionary of dictionaries containing details of all available routes to a
@@ -1011,6 +1011,7 @@ class NetworkDriver(object):
 
         :param destination: The destination prefix to be used when filtering the routes.
         :param protocol (optional): Retrieve the routes only for a specific protocol.
+        :param longer (optional): Retrieve more specific routes as well.
 
         Each inner dictionary contains the following fields:
 

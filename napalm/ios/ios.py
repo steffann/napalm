@@ -2358,9 +2358,17 @@ class IOSDriver(NetworkDriver):
                 return []
 
             elif len(line.split()) == 9:
-                address, ref_clock, st, when, poll, reach, delay, offset, disp = (
-                    line.split()
-                )
+                (
+                    address,
+                    ref_clock,
+                    st,
+                    when,
+                    poll,
+                    reach,
+                    delay,
+                    offset,
+                    disp,
+                ) = line.split()
                 address_regex = re.match(r"(\W*)([0-9.*]*)", address)
             try:
                 ntp_stats.append(
@@ -2819,7 +2827,7 @@ class IOSDriver(NetworkDriver):
                     bgp_attr["remote_as"] = napalm.base.helpers.as_number(bgpras)
         return bgp_attr
 
-    def get_route_to(self, destination="", protocol=""):
+    def get_route_to(self, destination="", protocol="", longer=False):
         """
         Only IPv4 is supported
         VRFs are supported
@@ -2853,6 +2861,9 @@ class IOSDriver(NetworkDriver):
             ]
         }
         """
+
+        if longer:
+            raise NotImplementedError("Longer prefixes not yet supported for IOS")
 
         output = []
         # Placeholder for vrf arg
@@ -2958,8 +2969,8 @@ class IOSDriver(NetworkDriver):
                                         destination, _vrf, nh, ip_version
                                     )
                                 nh_line_found = (
-                                    False
-                                )  # for next RT entry processing ...
+                                    False  # for next RT entry processing ...
+                                )
                                 routes[destination].append(route_entry)
         return routes
 
@@ -3222,8 +3233,12 @@ class IOSDriver(NetworkDriver):
                 stop_index = next_hop_match.start()
                 # Now you have the start and stop index for each hop
                 # and you can parse the probes
-            # Set the hop_variable, and remove spaces between msec for easier matching
-            hop_string = output[start_index:stop_index].replace(" msec", "msec")
+            # Set the hop_variable, and remove spaces between msec and [AS 1234] for easier matching
+            hop_string = re.sub(
+                r" \[AS [0-9.]+\]",
+                "",
+                output[start_index:stop_index].replace(" msec", "msec"),
+            )
             hop_list = hop_string.split()
             current_hop = int(hop_list.pop(0))
             # Prepare dictionary for each hop (assuming there are 3 probes in each hop)
@@ -3300,6 +3315,13 @@ class IOSDriver(NetworkDriver):
             "interfaces": {"interface": interface_dict},
         }
 
+        # No vrf is defined return default one
+        if len(sh_vrf_detail) == 0:
+            if name:
+                raise ValueError("No vrf is setup on router")
+            else:
+                return instances
+
         for vrf in sh_vrf_detail.split("\n\n"):
 
             first_part = vrf.split("Address family")[0]
@@ -3322,7 +3344,10 @@ class IOSDriver(NetworkDriver):
                 "state": {"route_distinguisher": RD},
                 "interfaces": {"interface": interfaces},
             }
-        return instances if not name else instances[name]
+        try:
+            return instances if not name else instances[name]
+        except AttributeError:
+            raise ValueError("The vrf %s does not exist" % name)
 
     def get_config(self, retrieve="all", full=False):
         """Implementation of get_config for IOS.

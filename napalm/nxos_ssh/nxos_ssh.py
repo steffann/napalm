@@ -581,16 +581,25 @@ class NXOSSSHDriver(NXOSDriverBase):
         show_int_status = self._send_command("show interface status")
         show_hostname = self._send_command("show hostname")
 
-        show_inventory_table = self._get_command_table(
-            "show inventory | json", "TABLE_inv", "ROW_inv"
-        )
-        if isinstance(show_inventory_table, dict):
-            show_inventory_table = [show_inventory_table]
+        try:
+            show_inventory_table = self._get_command_table(
+                "show inventory | json", "TABLE_inv", "ROW_inv"
+            )
+            if isinstance(show_inventory_table, dict):
+                show_inventory_table = [show_inventory_table]
 
-        for row in show_inventory_table:
-            if row["name"] == '"Chassis"' or row["name"] == "Chassis":
-                serial_number = row.get("serialnum", "")
-                break
+            for row in show_inventory_table:
+                if row["name"] == '"Chassis"' or row["name"] == "Chassis":
+                    serial_number = row.get("serialnum", "")
+                    break
+        except ValueError:
+            show_inventory = self._send_command("show inventory")
+            find_regexp = r"^NAME:\s+\"(.*)\",.*\n^PID:.*SN:\s+(\w*)"
+            find = re.findall(find_regexp, show_inventory, re.MULTILINE)
+            for row in find:
+                if row[0] == "Chassis":
+                    serial_number = row[1]
+                    break
 
         # uptime/serial_number/IOS version
         for line in show_ver.splitlines():
@@ -994,10 +1003,14 @@ class NXOSSSHDriver(NXOSDriverBase):
                 ip_address = line.split(",")[0].split()[2]
                 try:
                     prefix_len = int(line.split()[5].split("/")[1])
-                except ValueError:
+                except (ValueError, IndexError):
                     prefix_len = "N/A"
-                val = {"prefix_length": prefix_len}
-                v4_interfaces.setdefault(interface, {})[ip_address] = val
+
+                if ip_address == "none":
+                    v4_interfaces.setdefault(interface, {})
+                else:
+                    val = {"prefix_length": prefix_len}
+                    v4_interfaces.setdefault(interface, {})[ip_address] = val
 
         v6_interfaces = {}
         for line in output_v6.splitlines():
@@ -1028,6 +1041,10 @@ class NXOSSSHDriver(NXOSDriverBase):
                 prefix_len = int(prefix_len)
                 val = {"prefix_length": prefix_len}
                 v6_interfaces.setdefault(interface, {})[ip_address] = val
+            else:
+                # match the following format:
+                # IPv6 address: none
+                v6_interfaces.setdefault(interface, {})
 
         # Join data from intermediate dictionaries.
         for interface, data in v4_interfaces.items():
@@ -1300,10 +1317,12 @@ class NXOSSSHDriver(NXOSDriverBase):
                     bgp_attr["remote_as"] = 0  # 0? , locally sourced
         return bgp_attr
 
-    def get_route_to(self, destination="", protocol=""):
+    def get_route_to(self, destination="", protocol="", longer=False):
         """
         Only IPv4 supported, vrf aware, longer_prefixes parameter ready
         """
+        if longer:
+            raise NotImplementedError("Longer prefixes not yet supported for NXOS")
         longer_pref = ""  # longer_prefixes support, for future use
         vrf = ""
 
